@@ -4,7 +4,6 @@ import os
 import re
 import requests
 from bs4 import BeautifulSoup
-import datetime
 import shutil
 from time import sleep
 from csvkit.py2 import CSVKitDictReader, CSVKitDictWriter
@@ -13,7 +12,7 @@ HEADER = ["plugin_name", "plugin_page", "mirror_status", "repository_url", "tags
 
 cwd = os.path.dirname(__file__)
 INPUT_PATH = os.path.join(cwd, 'data')
-INPUT_FILE = '20190124_pluginmirror_list_backup'
+INPUT_FILE = 'pluginmirror_list'
 OUTPUT_FILE = 'pluginmirror_list_donwload'
 # Regex templates
 github_tpl_regex = re.compile('^https://github.com/(.+?)/([^/]+).*$')
@@ -154,7 +153,6 @@ def run():
                 row = get_trunk(row)
                 sleep(1.1)
             else:
-
                 print 'repository not found, maybe mirror was cloning %s' % (row['plugin_page'])
                 row['download_status'] = None
             writer.writerow(row)
