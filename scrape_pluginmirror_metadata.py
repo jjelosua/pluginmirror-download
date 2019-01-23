@@ -28,7 +28,7 @@ def make_request(url, headers=None):
     return r
 
 
-def scrape_pluginmirror_page(pagenum):
+def scrape_pluginmirror_page(pagenum, cache):
     """
     """
     plugins = []
@@ -53,7 +53,8 @@ def scrape_pluginmirror_page(pagenum):
         else:
             plugin['repository_url'] = repo['href']
             plugin['mirror_status'] = 'ok'
-
+        if plugin_page in cache:
+            continue
         plugins.append(plugin)
     return plugins
 
@@ -87,6 +88,14 @@ def run(args):
     """
     main loop
     """
+
+    prev_rows = []
+    cache = set()
+    # Restore cached package metadata if available and not overwritten by flag
+    if not args.no_cache:
+        prev_rows = get_previous_results()
+        cache = set([r['plugin_page'] for r in prev_rows])
+
     if not os.path.exists(OUTPUT_PATH):
         os.makedirs(OUTPUT_PATH)
 
@@ -95,6 +104,9 @@ def run(args):
               (OUTPUT_PATH, DATA_FILE), 'w') as fout:
         writer = CSVKitDictWriter(fout, fieldnames=HEADER, extrasaction='ignore')
         writer.writeheader()
+        # Write previous rows if available and we are using cache
+        writer.writerows(prev_rows)
+
         count = 0
         for p in range(args.start, num_pages+1):
             count +=1
@@ -102,7 +114,7 @@ def run(args):
             # Treat manually, see: http://www.pluginmirror.com/plugins?page=2344&sort=created&direction=asc
             if p == 2344:
                 continue
-            plugins = scrape_pluginmirror_page(p)
+            plugins = scrape_pluginmirror_page(p, cache)
             writer.writerows(plugins)
 
             if (count % 100 == 0):
@@ -114,6 +126,9 @@ if __name__ == '__main__':
     # Parse command-line arguments.
     parser = argparse.ArgumentParser(
         description="Scrape http://www.pluginmirror.com/plugins")
+    parser.add_argument('--no-cache',
+                        dest='no_cache',
+                        action='store_true')
     parser.add_argument("-s", "--start", type=int, default=1,
                     help="The starting page")
     args = parser.parse_args()
