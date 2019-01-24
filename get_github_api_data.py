@@ -9,11 +9,9 @@ import shutil
 from time import sleep
 from csvkit.py2 import CSVKitDictReader, CSVKitDictWriter
 # Parallel execution libs
-from collections import defaultdict
 from joblib import Parallel, delayed
-import joblib.parallel
 
-N_CORES = 4
+N_CORES = 7
 
 HEADER = ["plugin_name", "plugin_page", "mirror_status", "repository_url", "tags", "master"]
 
@@ -26,27 +24,6 @@ github_tpl_regex = re.compile('^https://github.com/(.+?)/([^/]+).*$')
 link_header_tpl_regex = re.compile('^.*<(.*)>;\s*rel="next".*$')
 # Github api token
 GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN','GITHUB_TOKEN')
-
-# PARALLEL EXECUTION SETTINGS
-# Override joblib callback default callback behavior
-class BatchCompletionCallBack(object):
-    completed = defaultdict(int)
-
-    def __init__(self, dispatch_timestamp, batch_size, parallel):
-        self.dispatch_timestamp = dispatch_timestamp
-        self.batch_size = batch_size
-        self.parallel = parallel
-
-    def __call__(self, out):
-        BatchCompletionCallBack.completed[self.parallel] += 1
-        if BatchCompletionCallBack.completed[self.parallel] % 50 == 0:
-            print("processed {} items"
-                  .format(BatchCompletionCallBack.completed[self.parallel]))
-        if self.parallel._original_iterator is not None:
-            self.parallel.dispatch_next()
-
-# MonkeyPatch BatchCompletionCallBack
-joblib.parallel.BatchCompletionCallBack = BatchCompletionCallBack
 
 
 def make_request(url, headers):
@@ -152,7 +129,7 @@ def download_github_data(row):
     while url:
         row, url = get_tags(row, url)
     row = get_trunk(row)
-    sleep(1.1)
+    sleep(1)
     return row
 
 
@@ -179,7 +156,7 @@ def run(args):
               (INPUT_PATH, OUTPUT_FILE), 'w') as fout:
         writer = CSVKitDictWriter(fout, fieldnames=HEADER, extrasaction='ignore')
         writer.writeheader()
-        r = Parallel(n_jobs=N_CORES)(delayed(download_github_data)(row) for row in rows[args.start:])
+        r = Parallel(n_jobs=N_CORES, verbose=10)(delayed(download_github_data)(row) for row in rows[args.start:])
         r = filter(None, r)
         writer.writerows(r)
 
