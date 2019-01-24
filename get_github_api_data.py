@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+import argparse
 import os
 import re
 import requests
@@ -119,7 +120,7 @@ def get_pluginmirror_data():
         return list()
 
 
-def run():
+def run(args):
     """
     main loop
     """
@@ -130,8 +131,9 @@ def run():
               (INPUT_PATH, OUTPUT_FILE), 'w') as fout:
         writer = CSVKitDictWriter(fout, fieldnames=HEADER, extrasaction='ignore')
         writer.writeheader()
-        count = 0
-        for row in rows:
+        # Allow the script to jump start after network glitches
+        count = args.start
+        for row in rows[args.start:]:
             if row['repository_url']:
                 count +=1
 
@@ -160,4 +162,9 @@ def run():
 
 if __name__ == '__main__':
     # Parse command-line arguments.
-    run()
+    parser = argparse.ArgumentParser(
+        description="Scrape http://www.pluginmirror.com/plugins")
+    parser.add_argument("-s", "--start", type=int, default=0,
+                    help="The starting page")
+    args = parser.parse_args()
+    run(args)
