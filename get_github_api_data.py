@@ -8,6 +8,12 @@ from bs4 import BeautifulSoup
 import shutil
 from time import sleep
 from csvkit.py2 import CSVKitDictReader, CSVKitDictWriter
+# Parallel execution libs
+from collections import defaultdict
+from joblib import Parallel, delayed
+import joblib.parallel
+
+N_CORES = 4
 
 HEADER = ["plugin_name", "plugin_page", "mirror_status", "repository_url", "tags", "master"]
 
@@ -20,6 +26,39 @@ github_tpl_regex = re.compile('^https://github.com/(.+?)/([^/]+).*$')
 link_header_tpl_regex = re.compile('^.*<(.*)>;\s*rel="next".*$')
 # Github api token
 GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN','GITHUB_TOKEN')
+
+# PARALLEL EXECUTION SETTINGS
+# Override joblib callback default callback behavior
+class BatchCompletionCallBack(object):
+    completed = defaultdict(int)
+
+    def __init__(self, dispatch_timestamp, batch_size, parallel):
+        self.dispatch_timestamp = dispatch_timestamp
+        self.batch_size = batch_size
+        self.parallel = parallel
+
+    def __call__(self, out):
+        BatchCompletionCallBack.completed[self.parallel] += 1
+        if BatchCompletionCallBack.completed[self.parallel] % 50 == 0:
+            print("processed {} items"
+                  .format(BatchCompletionCallBack.completed[self.parallel]))
+        if self.parallel._original_iterator is not None:
+            self.parallel.dispatch_next()
+
+# MonkeyPatch BatchCompletionCallBack
+joblib.parallel.BatchCompletionCallBack = BatchCompletionCallBack
+
+
+def make_request(url, headers):
+    """
+    make an http request
+    """
+    r = None
+    try:
+        r = requests.get(url, headers=headers)
+    except Exception as e:
+        raise e
+    return r
 
 
 def download_tag(row, tag):
@@ -96,16 +135,25 @@ def get_tags(row, url):
     return row, next_url
 
 
-def make_request(url, headers):
+def download_github_data(row):
     """
-    make an http request
+    Enable p
     """
-    r = None
-    try:
-        r = requests.get(url, headers=headers)
-    except Exception as e:
-        raise e
-    return r
+    m = github_tpl_regex.match(row['repository_url'])
+    if m:
+        row['owner'] = m.group(1)
+        row['repo'] = m.group(2)
+    else:
+        print "could not extract owner and repo from github repo url %s" % (row['repository_url'])
+        return None
+
+    GITHUB_TAGS_API_TPL = "https://api.github.com/repos/%(owner)s/%(repo)s/tags"
+    url = GITHUB_TAGS_API_TPL % {'owner': row['owner'], 'repo': row['repo']}
+    while url:
+        row, url = get_tags(row, url)
+    row = get_trunk(row)
+    sleep(1.1)
+    return row
 
 
 def get_pluginmirror_data():
@@ -131,33 +179,9 @@ def run(args):
               (INPUT_PATH, OUTPUT_FILE), 'w') as fout:
         writer = CSVKitDictWriter(fout, fieldnames=HEADER, extrasaction='ignore')
         writer.writeheader()
-        # Allow the script to jump start after network glitches
-        count = args.start
-        for row in rows[args.start:]:
-            if row['repository_url']:
-                count +=1
-
-                if (count % 50 == 0):
-                    print('processed %s github repos' % (count))
-
-                m = github_tpl_regex.match(row['repository_url'])
-                if m:
-                    row['owner'] = m.group(1)
-                    row['repo'] = m.group(2)
-                else:
-                    print "could not extract owner and repo from github repo url %s" % (row['repository_url'])
-                    continue
-
-                GITHUB_TAGS_API_TPL = "https://api.github.com/repos/%(owner)s/%(repo)s/tags"
-                url = GITHUB_TAGS_API_TPL % {'owner': row['owner'], 'repo': row['repo']}
-                while url:
-                    row, url = get_tags(row, url)
-                row = get_trunk(row)
-                sleep(1.1)
-            else:
-                print 'repository not found, maybe mirror was cloning %s' % (row['plugin_page'])
-                row['download_status'] = None
-            writer.writerow(row)
+        r = Parallel(n_jobs=N_CORES)(delayed(download_github_data)(row) for row in rows[args.start:])
+        r = filter(None, r)
+        writer.writerows(r)
 
 
 if __name__ == '__main__':
