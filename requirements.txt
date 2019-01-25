@@ -1,3 +1,4 @@
 beautifulsoup4==4.6.3
 requests==2.21.0
 csvkit==0.9.2
+joblib==0.13.1
