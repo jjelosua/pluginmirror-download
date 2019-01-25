@@ -34,6 +34,10 @@ Run Project
 
 Make sure the virtualenv is activated, if it is not run `workon pluginmirror-download`.
 
+This project uses github api token in order to increase the rate limit allowance.
+
+First Get your github token and store it in an envirorment variable called `GITHUB_TOKEN` or change the default value on `get_github_api_data.py`. We advise that you use enviromental variables, you can do so by using virtualenv hooks `postactivate` and `predeactivate` located in 'bin' inside your virtualenv folder.
+
 1. Run the script scrapes metadata from the Wordpress Plugin Mirror Site
 	`python scrape_pluginmirror_metadata.py`
 
